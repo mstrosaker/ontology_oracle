@@ -116,9 +116,9 @@ class ontology_table:
         if filename is not None:
             # build the table from an existing file
             self.feat_rows = []
-            feat_tab = dataset(filename, 'csv')
+            self.feat_tab = dataset(filename, 'csv')
             firstrow = True
-            for row in feat_tab.rows:
+            for row in self.feat_tab.rows:
                 feat = _feature_row(row['locus'], row['product'],
                                     row['feature'], '')
 
@@ -157,7 +157,7 @@ class ontology_table:
                 else:
                     feat.interpro = []
 
-                for col in feat_tab.colnames:
+                for col in self.feat_tab.colnames:
                     if col.startswith('expr:'):
                         if firstrow:
                             self.expression_labels.append('"' + col + '"')
@@ -182,12 +182,12 @@ class ontology_table:
                     not locus_tag_prefix:
             raise Exception('missing required parameter(s)')
 
-        feat_tab = dataset(feature_table, 'tab-delimited')
-        #index = feat_tab.index([locus_col, gene_col], accession_col)
+        self.feat_tab = dataset(feature_table, 'tab-delimited')
+        #index = self.feat_tab.index([locus_col, gene_col], accession_col)
 
         self.feat_rows = []
         finished = 0
-        for row in feat_tab.rows:
+        for row in self.feat_tab.rows:
             if isinstance(row[accession_col], basestring):
                 feature = _feature_row(row[label_col], row[description_col],
                                        row[gene_col], row[accession_col])
