@@ -113,6 +113,82 @@ def go(term):
     return cache_go[term]
 
 
+class _ec:
+    def __init__(self, txt):
+        self.id = ''
+        self.name = ''
+        self.synonyms = []
+        self.reaction = ''
+        self.txt = txt.split('\n')
+        for line in self.txt:
+            if line.startswith('ID  '):
+                self.id = line[5:]
+            elif line.startswith('DE  '):
+                self.name = line[5:].strip('.')
+            if line.startswith('AN '):
+                self.synonyms.append(line[5:].strip('.'))
+            elif line.startswith('CA  '):
+                self.reaction = line[5:].strip('.')
+
+        nums = self.id.split('.')
+        if nums[1] == '-':
+            self.level = 1
+            self.level1 = self
+            self.level2 = None
+            self.level3 = None
+        elif nums[2] == '-':
+            self.level = 2
+            self.level1 = self.parent
+            self.level2 = self
+            self.level3 = None
+        elif nums[3] == '-':
+            self.level = 3
+            self.level3 = self
+            self.level2 = self.parent
+            self.level1 = self.level2.parent
+        else:
+            self.level = 4
+            self.level3 = self.parent
+            self.level2 = self.level3.parent
+            self.level1 = self.level2.parent
+
+    @property
+    def parent(self):
+        nums = self.id.split('.')
+        if nums[1] == '-':
+            return None
+        if nums[3] != '-':
+            nums[3] = '-'
+        elif nums[2] != '-':
+            nums[2] = '-'
+        else:
+            nums[1] = '-'
+        return ec('.'.join(nums))
+
+url_ec_leaf_lookup = 'http://enzyme.expasy.org/EC/%s.txt'
+url_ec_lookup = 'http://enzyme.expasy.org/EC/%s'
+cache_ec = {}
+
+def ec(number):
+    global cache_ec
+
+    if number not in cache_ec:
+        if '-' in number:
+            file = utils.download(url_ec_lookup % number)
+            lines = ['ID   %s' % number]
+            for line in file.split('\n'):
+                if line.startswith('<HR><B>'):
+                    line = line[7:-11]
+                    name = line.split('<br>')[-1]
+                    lines.append('DE   %s' % name)
+            cache_ec[number] = _ec('\n'.join(lines))
+        else:
+            file = utils.download(url_ec_leaf_lookup % number)
+            cache_ec[number] = _ec(file)
+
+    return cache_ec[number]
+
+
 url_ec2go = 'http://geneontology.org/external2go/ec2go'
 local_ec2go = 'local_cache/ec2go.txt'
 cache_ec2go = None
