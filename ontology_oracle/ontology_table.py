@@ -171,21 +171,21 @@ class ontology_table:
 
                 for col in self.feat_tab.colnames:
                     if col.startswith('expr:'):
-                        if firstrow:
-                            self.expression_labels.append('"' + col + '"')
                         label = ':'.join(col.split(':')[1:])
+                        if firstrow:
+                            self.expression_labels.append(label)
                         feat.expression_labels.append(label)
                         feat.expression[label] = row[col]
                     elif col.startswith('foldchange:'):
-                        if firstrow:
-                            self.foldchanges.append('"' + col + '"')
                         label = ':'.join(col.split(':')[1:])
+                        if firstrow:
+                            self.foldchanges.append(label)
                         feat.foldchange_labels.append(label)
                         feat.foldchanges[label] = row[col]
                     elif col.startswith('annotation:'):
-                        if firstrow:
-                            self.annotation_labels.append('"' + col + '"')
                         label = ':'.join(col.split(':')[1:])
+                        if firstrow:
+                            self.annotation_labels.append(label)
                         feat.annotation_labels.append(label)
                         feat.annotation[label] = row[col]
 
