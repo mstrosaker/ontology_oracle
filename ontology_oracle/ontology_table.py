@@ -32,6 +32,8 @@ class _feature_row:
         self.expression = {}
         self.foldchange_labels = []
         self.foldchanges = {}
+        self.annotation_labels = []
+        self.annotation = {}
 
     def retrieve_accession(self, organism, lookup_db):
         self.acc = mine_protein(self.protein_id, lookup_db, self.gene, organism)
@@ -68,7 +70,11 @@ class _feature_row:
             self.foldchanges[label] = fold_change(self.expression[from_label],
                                                   self.expression[to_label])
 
-    def csv(self, all_exprs, all_foldchanges):
+    def add_annotation(self, label, value):
+        self.annotation_labels.append(label)
+        self.annotation[label] = value
+
+    def csv(self, all_exprs, all_foldchanges, all_annotations):
         ret = []
         if self.gene:
             ret.append(self.gene)
@@ -101,6 +107,11 @@ class _feature_row:
                 ret.append(str(self.foldchanges[label]))
             else:
                 ret.append('')
+        for label in all_annotations:
+            if label in self.annotation_labels:
+                ret.append('"%s"' % str(self.annotation[label]))
+            else:
+                ret.append('')
 
         return ','.join(ret)
 
@@ -112,6 +123,7 @@ class ontology_table:
 
         self.expression_labels = []
         self.foldchanges = []
+        self.annotation_labels = []
 
         if filename is not None:
             # build the table from an existing file
@@ -170,6 +182,12 @@ class ontology_table:
                         label = ':'.join(col.split(':')[1:])
                         feat.foldchange_labels.append(label)
                         feat.foldchanges[label] = row[col]
+                    elif col.startswith('annotation:'):
+                        if firstrow:
+                            self.annotation_labels.append('"' + col + '"')
+                        label = ':'.join(col.split(':')[1:])
+                        feat.annotation_labels.append(label)
+                        feat.annotation[label] = row[col]
 
                 self.feat_rows.append(feat)
                 firstrow = False
@@ -214,16 +232,19 @@ class ontology_table:
                 'pfam', 'tigrfam', 'smart', 'interpro']
         cols.extend([('"expr:%s"' % x) for x in self.expression_labels])
         cols.extend([('"foldchange:%s"' % x) for x in self.foldchanges])
+        cols.extend([('"annotation:%s"' % x) for x in self.annotation_labels])
 
         outfile.write('%s\n' % ','.join(cols))
 
         for f in self.feat_rows:
             outfile.write('%s\n' % f.csv(self.expression_labels,
-                                         self.foldchanges))
+                                      self.foldchanges, self.annotation_labels))
 
         outfile.close()
 
     def add_RNAseq_values(self, filename, label, locus_col, value_col):
+        if label in self.expression_labels:
+            raise Exception('Expression data label %s already in table' % label)
         expr_data = dataset(filename, 'csv')
         self.expression_labels.append(label)
         for row in expr_data.rows:
@@ -233,7 +254,27 @@ class ontology_table:
                                                          row[value_col])
 
     def calc_foldchange(self, from_label, to_label):
-        self.foldchanges.append('%s:%s' % (from_label, to_label))
+        label = '%s:%s' % (from_label, to_label)
+        if label in self.foldchanges:
+            raise Exception('Fold change label %s already in table' % label)
+        self.foldchanges.append(label)
         for row in self.feat_rows:
             row.calc_foldchange(from_label, to_label)
+
+    def add_annotation(self, filename, label, value_col, locus_col=None,
+                       product_col=None):
+        if label in self.annotation_labels:
+            raise Exception('Annotation label %s already in table' % label)
+        annot_data = dataset(filename, 'csv')
+        self.annotation_labels.append(label)
+        for row in annot_data.rows:
+            if locus_col and isinstance(row[locus_col], basestring):
+                if row[locus_col] in self.index:
+                    self.index[row[locus_col]].add_annotation(label,
+                                                         row[value_col])
+            elif product_col and isinstance(row[product_col], basestring):
+                for tab_row in self.feat_rows:
+                    if tab_row.description and \
+                                row[product_col] in tab_row.description:
+                        row[product_col].add_annotation(label, row[value_col])
 
