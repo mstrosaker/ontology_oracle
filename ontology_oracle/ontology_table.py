@@ -2,6 +2,7 @@
 # MIT License
 # http://opensource.org/licenses/MIT
 
+import math
 from utils import dataset, fold_change
 from services import mine_protein
 from ontology import go
@@ -174,20 +175,25 @@ class ontology_table:
                         label = ':'.join(col.split(':')[1:])
                         if firstrow:
                             self.expression_labels.append(label)
-                        feat.expression_labels.append(label)
-                        feat.expression[label] = row[col]
+                        if isinstance(row[col], float) and \
+                                    not math.isnan(row[col]):
+                            feat.expression_labels.append(label)
+                            feat.expression[label] = row[col]
                     elif col.startswith('foldchange:'):
                         label = ':'.join(col.split(':')[1:])
                         if firstrow:
                             self.foldchanges.append(label)
-                        feat.foldchange_labels.append(label)
-                        feat.foldchanges[label] = row[col]
+                        if isinstance(row[col], float) and \
+                                    not math.isnan(row[col]):
+                            feat.foldchange_labels.append(label)
+                            feat.foldchanges[label] = row[col]
                     elif col.startswith('annotation:'):
                         label = ':'.join(col.split(':')[1:])
                         if firstrow:
                             self.annotation_labels.append(label)
-                        feat.annotation_labels.append(label)
-                        feat.annotation[label] = row[col]
+                        if isinstance(row[col], basestring) and row[col] != '':
+                            feat.annotation_labels.append(label)
+                            feat.annotation[label] = row[col]
 
                 self.feat_rows.append(feat)
                 firstrow = False
