@@ -1,4 +1,6 @@
 *.pyc
 *.swp
 *~
+*.png
+*.svg
 build
