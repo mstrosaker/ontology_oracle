@@ -1,0 +1,94 @@
+#!/usr/bin/Rscript
+
+library(methods)
+library(ggplot2)
+library(grid)
+suppressMessages(library(reshape))
+
+args <- commandArgs(trailingOnly = TRUE)
+
+if (length(args) < 1) {
+    args <- c("--help")
+}
+ 
+usage <- function() {
+    cat("\ngen_heatmap <infile> <format> <outfile> <width> <height> <orientation> (facet)
+
+    This is generally not manually invoked, but rather automatically
+    invoked by the heatmap command.
+\n\n.")
+    q(save="no")
+}
+
+if ("--help" %in% args) {
+    usage()
+}
+
+if (length(args) < 6) {
+    cat("\ninsufficient arguments\n")
+    usage()
+}
+
+infile <- args[1]
+format <- args[2]
+outfile <- args[3]
+width <- as.numeric(args[4])
+height <- as.numeric(args[5])
+orientation <- args[6]
+
+dat <- read.table(infile, header=TRUE)
+
+# only include complete cases (no NAs)
+dat.complete <- dat[complete.cases(dat),]
+
+suppressMessages(
+    dat.melt <- melt(dat.complete)
+)
+
+dat.melt$variable <- with(dat.melt,factor(variable,levels = rev(sort(unique(variable)))))
+
+if (format == "png") {
+    png(outfile, width, height, res=120)
+}
+if (format == "svg") {
+    svg(outfile, width, height)
+}
+
+if (orientation == "horizontal") {
+    p <- ggplot(dat.melt, aes(x=gene, y=variable, fill=value))
+}
+if (orientation == "vertical") {
+    p <- ggplot(dat.melt, aes(x=variable, y=gene, fill=value))
+}
+
+p <- p + geom_tile() +
+    labs(x='', y='', fill='log2 fold change') +
+    scale_x_discrete(expand = c(0,0)) +
+    scale_fill_gradient2(low='forestgreen', high="firebrick3",
+                         mid='black', limits=c(-4,4), midpoint=0,
+                         labels=c('-4 or less', '-2', '0', '2', '4 or more')) +
+    theme_bw() +
+    theme(panel.grid.major = element_blank(),
+          panel.grid.major = element_blank(),
+          panel.border = element_blank(),
+          #legend.position=c(1.1,.5),
+          #legend.position='right',
+          #legend.justification='top',
+          axis.ticks = element_blank(),
+          axis.text.y = element_text(colour='black'),
+          axis.text.x = element_text(colour='black', angle=45, hjust=1),
+          legend.margin=unit(2, "mm"))
+
+if (length(args) == 7 && args[7] == "facet") {
+    if (orientation == "horizontal") {
+        p <- p + facet_grid(. ~ annotation, scales="free_x", space="free_x")
+    }
+    if (orientation == "vertical") {
+        p <- p + facet_grid(annotation ~ ., scales="free_y", space="free_y")
+    }
+}
+
+p
+
+junk <- dev.off()
+

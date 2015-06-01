@@ -35,6 +35,14 @@ setup(
                       'examples/sample_feature_table.txt',
                       'examples/sample_RNAseq.csv',
                   ]),
+                  ('/opt/ontology_oracle/plotting', [
+                      'plotting/ontology_tornado',
+                      'plotting/heatmap',
+                  ]),
+                  ('/opt/ontology_oracle/plotting/helpers', [
+                      'plotting/helpers/gen_tornado',
+                      'plotting/helpers/gen_heatmap',
+                  ]),
                  ],
 )
 

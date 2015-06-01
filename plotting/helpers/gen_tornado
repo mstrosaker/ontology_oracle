@@ -1,0 +1,90 @@
+#!/usr/bin/Rscript
+
+library(methods)
+library(plyr)
+library(grid)
+library(ggplot2)
+
+args <- commandArgs(trailingOnly = TRUE)
+
+if (length(args) < 1) {
+    args <- c("--help")
+}
+
+usage <- function() {
+    cat("\ngen_tornado <infile> <format> <outfile> <sort> <width> <height> (facet)
+
+    This is generally not manually invoked, but rather automatically
+    invoked by the ontology_tornado command.
+\n\n.")
+    q(save="no")
+}
+
+if ("--help" %in% args) {
+    usage()
+}
+
+if (length(args) < 6) {
+    cat("\ninsufficient arguments\n")
+    usage()
+}
+
+infile <- args[1]
+format <- args[2]
+outfile <- args[3]
+sort <- args[4]
+width <- as.numeric(args[5])
+height <- as.numeric(args[6])
+
+dat <- read.table(infile, header=TRUE)
+dat <- within(dat, levels(namespace)[levels(namespace) == "molecular_function"] <- "molecular function")
+dat <- within(dat, levels(namespace)[levels(namespace) == "cellular_component"] <- "cellular\ncomponent")
+dat <- within(dat, levels(namespace)[levels(namespace) == "biological_process"] <- "biological process")
+
+label_position <- function(reg, val, up_offset, down_offset) {
+    if (reg[1] == "upregulated") {
+        return(val+up_offset)
+    }
+    if (reg[1] == "downregulated") {
+        return(val-down_offset)
+    }
+    return(0)
+}
+
+if (sort == "quantity") {
+    dat <- within(dat, term <- factor(term, levels=unique(dat$term)))
+}
+
+dat <- ddply(dat, "value", transform, label_val=abs(value))
+dat <- ddply(dat, c("regulation", "value"), transform,
+                label_pos=label_position(regulation, value, 6, 6))
+
+if (format == "png") {
+    png(outfile, width, height, res=90)
+}
+if (format == "svg") {
+    svg(outfile, width, height)
+}
+
+p <- ggplot(dat, aes(term, value, fill=regulation)) +
+        geom_bar(position="identity", stat="identity") +
+        ylab("Number of Genes") +
+        geom_text(aes(y=label_pos, label=label_val),
+                colour="black", size=3) +           # labels on bars
+        labs(fill="Expression") +                   # title of legend
+        guides(fill=guide_legend(reverse=TRUE)) +   # reverse order in legend
+        theme(axis.text.x = element_text(colour='black', angle=45, hjust=1),
+                axis.title.x = element_blank(),
+                legend.position="bottom",
+                plot.margin=unit(c(2,2,2,40), "mm"))
+
+if (length(args) == 7 && args[7] == "facet") {
+    p <- p + facet_grid(. ~ namespace, scales="free_x", space="free_x")
+}
+
+p
+
+junk <- dev.off()
+
+q(save="no")
+

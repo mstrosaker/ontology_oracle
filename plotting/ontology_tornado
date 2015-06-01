@@ -1,0 +1,170 @@
+#!/usr/bin/env python
+
+import sys, os, argparse, tempfile, subprocess
+from ontology_oracle.ontology_table import ontology_table
+from ontology_oracle.ontology import go, ec
+
+rscript = '/opt/ontology_oracle/plotting/helpers/gen_tornado'
+
+parser = argparse.ArgumentParser(prog='ontology_tornado',
+        description='Generates a tornado plot to graphically summarize the '
+                    'difference in regulation between two RNA-Seq runs.')
+parser.add_argument('-t', '--type', type=str, default='go-slim',
+        choices = ['go-slim', 'go-slim-groups', 'ec'],
+        help='type of ontology term to plot (default: go-slim); go-slim-'
+             'groups generates a separate plot for each GO namespace')
+parser.add_argument('-f', '--format', type=str, default='png',
+        choices = ['png', 'svg'],
+        help='format of image(s) to produce (default: png)')
+parser.add_argument('-s', '--sort', type=str, default='quantity',
+        choices = ['quantity', 'alphabetical'],
+        help='specify how to sort the bars in the plot (default: quantity)')
+parser.add_argument('ontology_table', type=argparse.FileType('r'),
+        help='filename of the ontology table')
+parser.add_argument('image_filename', type=str,
+        help='base name of the output file (an extension will be added)')
+parser.add_argument('foldchange_label', type=str,
+        help='description of the RNA-Seq runs to compare; should be in the '
+             'format "label1:label2" to describe the fold change from the '
+             'RNA-Seq data labeled as label1 to the data labeled as label2')
+args = parser.parse_args()
+
+table = ontology_table(filename=args.ontology_table)
+
+foldchange_label = 'foldchange:%s' % args.foldchange_label
+if foldchange_label not in table.feat_tab.colnames:
+    label1 = args.foldchange_label.split(':')[0]
+    label2 = ':'.join(args.foldchange_label.split(':')[1:])
+    missing_expr = False
+    if ('expr:%s' % label1) not in table.feat_tab.colnames:
+        missing_expr = True
+        sys.stderr.write('There is no expression data with the label %s ' \
+                         'in the ontology table.\n' % label1)
+    if ('expr:%s' % label2) not in table.feat_tab.colnames:
+        missing_expr = True
+        sys.stderr.write('There is no expression data with the label %s ' \
+                         'in the ontology table.\n' % label2)
+    if not missing_expr:
+        sys.stderr.write('No fold change was calculated for %s as compared ' \
+                         ' to %s.\n' % (label2, label1))
+    sys.exit(1)
+
+def gen_plot(outlist, filebase, facet):
+    # sort by upregulation
+    outlist = sorted(outlist, reverse=True, key=lambda x: x[1] + x[2])
+
+    # use a temporary file to store the input to the R script
+    outfile_fd, outfile_name = tempfile.mkstemp()
+    outfile = os.fdopen(outfile_fd, 'w')
+
+    outfile.write('term\tregulation\tvalue\tnamespace\n')
+    for entry in outlist:
+        outfile.write('"%s"\tupregulated\t%d\t%s\n' % \
+                      (entry[0], entry[1], entry[3]))
+        outfile.write('"%s"\tdownregulated\t%d\t%s\n' % \
+                      (entry[0], -1 * entry[2], entry[3]))
+
+    outfile.close()
+
+    # open a pipe to the R script for generating the plot
+    width = int(400 + (len(outlist) * 15))
+    height = 720
+
+    if args.format == 'svg':
+        width /= 100.0
+        height = 7
+
+    R_args = [rscript, outfile_name, args.format,
+              '%s.%s' % (filebase, args.format), args.sort,
+              str(width), str(height)]
+    if facet:
+        R_args.append('facet')
+    proc = subprocess.Popen(R_args)
+    rc = proc.wait()
+
+    if rc == 0:
+        print 'Plot written to %s.%s' % (filebase, args.format)
+    else:
+        print 'Error in the plot generation.'
+
+    os.remove(outfile_name)
+
+if args.type in ('go-slim', 'go-slim-groups'):
+    slims = []
+    slim_upreg = {}
+    slim_downreg = {}
+
+    for row in table.feat_tab.rows:
+        if row[foldchange_label] > 0:
+            if isinstance(row['go-slim'], basestring):
+                for slim in row['go-slim'].split(';'):
+                    slims.append(slim)
+                    slim_upreg[slim] = slim_upreg.get(slim, 0) + 1
+                    if slim not in slim_downreg:
+                        slim_downreg[slim] = 0
+        elif row[foldchange_label] < 0:
+            if isinstance(row['go-slim'], basestring):
+                for slim in row['go-slim'].split(';'):
+                    slims.append(slim)
+                    slim_downreg[slim] = slim_downreg.get(slim, 0) + 1
+                    if slim not in slim_upreg:
+                        slim_upreg[slim] = 0
+
+    slims = list(set(slims))
+
+    outlist = []
+
+    for slim in slims:
+        g = go(slim)
+        if g.name in ('molecular_function', 'biological_process',
+                      'cellular_component'):
+            continue
+        outlist.append((g.name, slim_upreg[slim], slim_downreg[slim],
+                        g.namespace))
+
+    if args.type == 'go-slim':
+        gen_plot(outlist, args.image_filename, True)
+    elif args.type == 'go-slim-groups':
+        for category in ('molecular_function', 'biological_process',
+                         'cellular_component'):
+            cat_list = [x for x in outlist if x[3] == category]
+            if len(cat_list) > 0:
+                gen_plot(cat_list, '%s_%s' % (args.image_filename, category),
+                         False)
+
+if args.type == 'ec':
+    names = []
+    name_upreg = {}
+    name_downreg = {}
+
+    for row in table.feat_tab.rows:
+        if str(row['ec']) == 'nan':
+            continue
+        if row[foldchange_label] > 0:
+            for num in str(row['ec']).split(';'):
+                obj = ec(num)
+                if obj.level2:
+                    name = '%s :: %s' % (obj.level1.name, obj.level2.name)
+                    names.append(name)
+                    name_upreg[name] = name_upreg.get(name, 0) + 1
+                    if name not in name_downreg:
+                        name_downreg[name] = 0
+        elif row[foldchange_label] < 0:
+            for num in str(row['ec']).split(';'):
+                obj = ec(num)
+                if obj.level2:
+                    name = '%s :: %s' % (obj.level1.name, obj.level2.name)
+                    names.append(name)
+                    name_downreg[name] = name_downreg.get(name, 0) + 1
+                    if name not in name_upreg:
+                        name_upreg[name] = 0
+
+    names = list(set(names))
+
+    outlist = []
+
+    for name in names:
+        outlist.append((name, name_upreg[name], name_downreg[name], 'NA'))
+
+    gen_plot(outlist, args.image_filename, False)
+
